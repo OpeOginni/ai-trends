@@ -166,6 +166,35 @@ export const entities = pgTable(
     ]
   );
 
+  export const promptJobs = pgTable(
+    "prompt_jobs",
+    {
+      id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+      promptId: integer("prompt_id")
+        .references(() => prompts.id, { onDelete: "cascade" })
+        .notNull(),
+      modelId: integer("model_id")
+        .references(() => models.id, { onDelete: "cascade" })
+        .notNull(),
+      runIndex: integer("run_index").notNull(), // 0-based index for multiple runs
+      batchKey: varchar("batch_key", { length: 50 }).notNull(), // e.g., "2025-10-14" for daily runs
+      status: varchar("status", { length: 20 }).notNull().default("queued"), // queued | processing | succeeded | failed | skipped
+      errorMessage: text("error_message"),
+      attemptCount: integer("attempt_count").default(0).notNull(),
+      scheduledFor: timestamp("scheduled_for"),
+      startedAt: timestamp("started_at"),
+      finishedAt: timestamp("finished_at"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+    },
+    (table) => [
+      // Unique constraint to prevent duplicate jobs for same prompt/model/run/batch
+      unique("idx_prompt_jobs_unique").on(table.promptId, table.modelId, table.runIndex, table.batchKey),
+      // Index for finding jobs to process
+      index("idx_prompt_jobs_status").on(table.status, table.scheduledFor),
+      index("idx_prompt_jobs_prompt").on(table.promptId, table.createdAt),
+    ]
+  );
+
 export type Model = typeof models.$inferSelect
 export type NewModel = typeof models.$inferInsert
 
@@ -180,3 +209,6 @@ export type NewResponse = typeof responses.$inferInsert
 
 export type Stat = typeof stats.$inferSelect
 export type NewStat = typeof stats.$inferInsert
+
+export type PromptJob = typeof promptJobs.$inferSelect
+export type NewPromptJob = typeof promptJobs.$inferInsert

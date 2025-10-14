@@ -5,7 +5,7 @@ import { eq, inArray, and, sql } from 'drizzle-orm';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { SYSTEM_PROMPT } from '@/lib/system-prompt';
 import { z } from 'zod';
-import { polishEntity } from '@/lib/utils';
+import { polishEntity } from '@/lib/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { createOpenAI } from '@ai-sdk/openai';
 
@@ -13,7 +13,15 @@ import { createOpenAI } from '@ai-sdk/openai';
 const processingCache = new Map<number, { timestamp: number; promise: Promise<any> }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// DEPRECATED: This endpoint is kept for backward compatibility
+// New implementations should use the job queue system:
+// - POST /api/cron to enqueue jobs
+// - POST /api/jobs/process to process individual jobs
+// See JOBS_SYSTEM.md for details
+
 export async function POST(request: NextRequest) {
+    console.warn('⚠️ DEPRECATED: /api/process-prompt is deprecated. Use job queue system instead.');
+    
     const authHeader = request.headers.get('authorization');
 
     if (authHeader !== process.env.CRON_SECRET) {
