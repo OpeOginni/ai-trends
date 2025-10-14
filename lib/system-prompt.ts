@@ -1,1 +1,1 @@
-export const SYSTEM_PROMPT = "You are a helpful assistant who's job is to give the best answer to the user's question."
+export const SYSTEM_PROMPT = "You are a helpful assistant who's job is to give the best answer and single suggestion to the user's request."

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, serial, varchar, bigint, index, integer, numeric, date, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, serial, varchar, bigint, index, integer, numeric, date, jsonb, unique } from "drizzle-orm/pg-core";
 
 // AUTH SCHEMA
 export const user = pgTable("user", {
@@ -78,13 +78,15 @@ export const models = pgTable("models", {
     id: serial("id").primaryKey(),
     name: varchar("name", { length: 100 }).notNull(), // e.g. "gpt-5"
     provider: varchar("provider", { length: 100 }).notNull(), // e.g. "OpenAI"
-    package: varchar("package", { length: 100 }).notNull(), // e.g. "@ai-sdk/groq"
-    secretKey: text("secret_key"), // e.g. "ANTHROPIC_API_KEY"
     openWeights: boolean("open_weights").default(false),
     supportsObjectOutput: boolean("supports_object_output").default(false),
     reasoning: boolean("reasoning").default(false),
     hasWebAccess: boolean("has_web_access").default(false),
-});
+    knowledge: text("knowledge"),
+    category: text("category").notNull()
+}, (table) => [
+  unique("idx_models_name_provider").on(table.name, table.provider),
+]);
 
 export const entities = pgTable(
     "entities",
@@ -162,3 +164,18 @@ export const entities = pgTable(
       index("idx_stats_entity").on(table.entityName),
     ]
   );
+
+export type Model = typeof models.$inferSelect
+export type NewModel = typeof models.$inferInsert
+
+export type Prompt = typeof prompts.$inferSelect
+export type NewPrompt = typeof prompts.$inferInsert
+
+export type Entity = typeof entities.$inferSelect
+export type NewEntity = typeof entities.$inferInsert
+
+export type Response = typeof responses.$inferSelect
+export type NewResponse = typeof responses.$inferInsert
+
+export type Stat = typeof stats.$inferSelect
+export type NewStat = typeof stats.$inferInsert

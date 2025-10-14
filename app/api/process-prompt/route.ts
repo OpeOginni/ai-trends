@@ -7,6 +7,7 @@ import { SYSTEM_PROMPT } from '@/lib/system-prompt';
 import { z } from 'zod';
 import { polishEntity } from '@/lib/utils';
 import { NextRequest, NextResponse } from 'next/server';
+import { createOpenAI } from '@ai-sdk/openai';
 
 export async function POST(request: NextRequest) {
     try {
@@ -23,9 +24,16 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Prompt not found' }, { status: 404 });
         }
 
+        let sdkModel
+
+
         const openRouter = createOpenRouter({
             apiKey: process.env.OPENROUTER_API_KEY as string,
         });
+
+        const openAIRouter = createOpenAI({
+            apiKey: process.env.OPENAI_API_KEY as string,
+        })
 
         // Get the models for this prompt
         const promptModels = await db.select().from(models).where(inArray(models.id, prompt.models.map((model: any) => model.id)));
@@ -35,10 +43,16 @@ export async function POST(request: NextRequest) {
         for (const model of promptModels) {
             for (let i = 0; i < runs; i++) {
                 let output = "";
-                
+                if (model.provider === "openai") {
+                    sdkModel = openAIRouter(model.name);
+                } else {
+                    sdkModel = openRouter(`${model.provider}/${model.name}`);
+                }
+
+            
                 if (model.supportsObjectOutput) {
                     const response = await generateObject({
-                        model: openRouter(`${model.provider}/${model.name}`),
+                        model: sdkModel,
                         system: SYSTEM_PROMPT,
                         prompt: prompt.question,
                         output: "object",
