@@ -82,6 +82,7 @@ export const models = pgTable("models", {
     supportsObjectOutput: boolean("supports_object_output").default(false),
     reasoning: boolean("reasoning").default(false),
     hasWebAccess: boolean("has_web_access").default(false),
+    temperature: boolean("temperature").default(false),
     knowledge: text("knowledge"),
     category: text("category").notNull()
 }, (table) => [

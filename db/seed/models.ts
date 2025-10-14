@@ -12,6 +12,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2024-05",
+            temperature: false,
             category: "general",
         },
         {
@@ -22,6 +23,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2024-05",
+            temperature: false,
             category: "general",
         },
         {
@@ -32,6 +34,7 @@ async function seedModels() {
             supportsObjectOutput: false,
             hasWebAccess: false,
             knowledge: "2024-09",
+            temperature: true,
             category: "general"
         },
         // {
@@ -52,6 +55,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2024-10",
+            temperature: true,
             category: "coding"
         },
         {
@@ -62,6 +66,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2025-07",
+            temperature: true,
             category: "general"
         },
         {
@@ -72,6 +77,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2025-03",
+            temperature: true,
             category: "general"
         },
         {
@@ -82,6 +88,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2025-01",
+            temperature: true,
             category: "general"
         },
         {
@@ -92,6 +99,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2025-01",
+            temperature: true,
             category: "general"
         },
         {
@@ -102,6 +110,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2025-07",
+            temperature: true,
             category: "general"
         },
         {
@@ -112,6 +121,7 @@ async function seedModels() {
             supportsObjectOutput: true,
             hasWebAccess: false,
             knowledge: "2025-07",
+            temperature: true,
             category: "general"
         }
     ]
