@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, boolean, serial, varchar, bigint, index, integer, numeric, date, jsonb, unique } from "drizzle-orm/pg-core";
+import { format } from "date-fns";
+import { pgTable, text, timestamp, boolean, serial, varchar, bigint, index, integer, numeric, date, jsonb, unique, uuid } from "drizzle-orm/pg-core";
 
 // AUTH SCHEMA
 export const user = pgTable("user", {
@@ -62,20 +63,20 @@ export const verification = pgTable("verification", {
 });
 
 export const prompts = pgTable("prompts", {
-    id: serial("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     category: varchar("category", { length: 100 }).notNull(), // e.g. "tv_show"
     question: text("question").notNull(),
     frequency: varchar("frequency", { length: 50 }).default("single"), // e.g. "daily", "weekly", "monthly", "single"
     runs: integer("runs").default(1).notNull(),
     active: boolean("active").default(true),
     isHighlighted: boolean("is_highlighted").default(false),
-    models: jsonb("models").notNull().$type<{ id: number }[]>(),
+    models: jsonb("models").notNull().$type<{ id: string }[]>(),
     lastRunAt: timestamp("last_run_at"),
     createdAt: timestamp("created_at").defaultNow(),
   });
 
 export const models = pgTable("models", {
-    id: serial("id").primaryKey(),
+    id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 100 }).notNull(), // e.g. "gpt-5"
     provider: varchar("provider", { length: 100 }).notNull(), // e.g. "OpenAI"
     openWeights: boolean("open_weights").default(false),
@@ -92,7 +93,7 @@ export const models = pgTable("models", {
 export const entities = pgTable(
     "entities",
     {
-      id: serial("id").primaryKey(),
+      id: uuid("id").primaryKey().defaultRandom(),
       name: varchar("name", { length: 255 }).notNull().unique(), // e.g. "Breaking Bad"
       category: varchar("category", { length: 100 }),
       totalMentions: bigint("total_mentions", { mode: "number" }).default(0),
@@ -103,28 +104,17 @@ export const entities = pgTable(
     ]
   );
 
-  export const entityResponses = pgTable("entity_responses", {
-    id: serial("id").primaryKey(),
-    promptId: integer("prompt_id").references(() => prompts.id).notNull(),
-    entityId: integer("entity_id").references(() => entities.id).notNull(),
-    mentionCount: integer("mention_count").default(1).notNull(),
-    lastMentionedAt: timestamp("last_mentioned_at").defaultNow(),
-  }, (table) => ([
-    index("idx_entity_responses_prompt_entity").on(table.promptId, table.entityId),
-  ]));
-  
-
   export const responses = pgTable(
     "responses",
     {
-      id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
-      promptId: integer("prompt_id")
+      id: uuid("id").primaryKey().defaultRandom(),
+      promptId: uuid("prompt_id")
         .references(() => prompts.id, { onDelete: "cascade" })
         .notNull(),
-      modelId: integer("model_id")
+      modelId: uuid("model_id")
         .references(() => models.id, { onDelete: "cascade" })
         .notNull(),
-      entityId: integer("entity_id")
+      entityId: uuid("entity_id")
         .references(() => entities.id, { onDelete: "cascade" })
         .notNull(),
       responseText: text("response_text"),
@@ -140,45 +130,36 @@ export const entities = pgTable(
     ]
   );
 
-  export const stats = pgTable(
-    "stats",
+  export const promptRuns = pgTable(
+    "prompt_runs",
     {
-      id: bigint("id", { mode: "number" }).primaryKey(),
-      promptId: integer("prompt_id")
+      id: uuid("id").primaryKey().defaultRandom(),
+      promptId: uuid("prompt_id")
         .references(() => prompts.id, { onDelete: "cascade" })
         .notNull(),
-      modelId: integer("model_id")
-        .references(() => models.id, { onDelete: "cascade" })
+      status: varchar("status", { length: 20 }).notNull().default("completed"), // processing | completed
+      batchKey: varchar("batch_key", { length: 50 }).default(format(new Date(), 'yyyy-MM-dd')).notNull(),
+      totalJobs: integer("total_jobs").notNull().default(0),
+      successfulJobs: integer("successful_jobs").notNull().default(0),
+      failedJobs: integer("failed_jobs").notNull().default(0),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at")
+        .$onUpdate(() => /* @__PURE__ */ new Date())
         .notNull(),
-      entityName: varchar("entity_name", { length: 255 }).notNull(),
-      mentions: bigint("mentions", { mode: "number" }).default(0),
-      trendDelta: numeric("trend_delta", { precision: 6, scale: 2 }), // percent change
-      periodStart: date("period_start").notNull(),
-      periodEnd: date("period_end").notNull(),
-    },
-    (table) => [
-      index("idx_stats_prompt_model_period").on(
-        table.promptId,
-        table.modelId,
-        table.periodEnd
-      ),
-      index("idx_stats_entity").on(table.entityName),
-    ]
-  );
-
+    }
+  )
   export const promptJobs = pgTable(
     "prompt_jobs",
     {
-      id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
-      promptId: integer("prompt_id")
-        .references(() => prompts.id, { onDelete: "cascade" })
+      id: uuid("id").primaryKey().defaultRandom(),
+      promptRunId: uuid("prompt_run_id")
+        .references(() => promptRuns.id, { onDelete: "cascade" })
         .notNull(),
-      modelId: integer("model_id")
+      modelId: uuid("model_id")
         .references(() => models.id, { onDelete: "cascade" })
         .notNull(),
-      runIndex: integer("run_index").notNull(), // 0-based index for multiple runs
-      batchKey: varchar("batch_key", { length: 50 }).notNull(), // e.g., "2025-10-14" for daily runs
-      status: varchar("status", { length: 20 }).notNull().default("queued"), // queued | processing | succeeded | failed | skipped
+      runIndex: bigint("run_index", { mode: "number" }).notNull(), // 0-based index for multiple runs
+      status: varchar("status", { length: 20 }).notNull().default("queued"), // queued | processing | successful | failed | skipped
       errorMessage: text("error_message"),
       attemptCount: integer("attempt_count").default(0).notNull(),
       scheduledFor: timestamp("scheduled_for"),
@@ -188,10 +169,10 @@ export const entities = pgTable(
     },
     (table) => [
       // Unique constraint to prevent duplicate jobs for same prompt/model/run/batch
-      unique("idx_prompt_jobs_unique").on(table.promptId, table.modelId, table.runIndex, table.batchKey),
+      unique("idx_prompt_jobs_unique").on(table.promptRunId, table.modelId, table.runIndex),
       // Index for finding jobs to process
       index("idx_prompt_jobs_status").on(table.status, table.scheduledFor),
-      index("idx_prompt_jobs_prompt").on(table.promptId, table.createdAt),
+      index("idx_prompt_jobs_prompt").on(table.promptRunId, table.createdAt),
     ]
   );
 
@@ -206,9 +187,6 @@ export type NewEntity = typeof entities.$inferInsert
 
 export type Response = typeof responses.$inferSelect
 export type NewResponse = typeof responses.$inferInsert
-
-export type Stat = typeof stats.$inferSelect
-export type NewStat = typeof stats.$inferInsert
 
 export type PromptJob = typeof promptJobs.$inferSelect
 export type NewPromptJob = typeof promptJobs.$inferInsert

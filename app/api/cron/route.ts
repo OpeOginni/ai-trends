@@ -1,5 +1,6 @@
 import db from '@/db';
-import { models, prompts, promptJobs } from '@/db/schema';
+import { models, prompts, promptJobs, promptRuns } from '@/db/schema';
+import { format, subDays } from 'date-fns';
 import { eq, and, or, isNull, lt, inArray } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 
@@ -16,10 +17,10 @@ export async function GET(request: NextRequest) {
     try {
         console.log('\n⏰ Cron job triggered - checking for due prompts...');
         
-        // Calculate the cutoff time for daily prompts (24 hours ago)
-        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        // Calculate the cutoff time for daily prompts (1 day ago)
+        const oneDayAgo = subDays(new Date(), 1);
         
-        // Fetch prompts that are due (active, daily frequency, and either never run or last run > 24h ago)
+        // Fetch prompts that are due (active, daily frequency, and either never run or last run > 1 day ago)
         const duePrompts = await db
             .select()
             .from(prompts)
@@ -47,17 +48,17 @@ export async function GET(request: NextRequest) {
 
         // Generate batch key (YYYY-MM-DD in UTC)
         const now = new Date();
-        const batchKey = now.toISOString().split('T')[0];
+        const batchKey = format(now, 'yyyy-MM-dd');
 
         let totalJobsCreated = 0;
-        const jobsToTrigger: number[] = [];
+        const jobsToTrigger: string[] = [];
 
         // Create jobs for each prompt
         for (const prompt of duePrompts) {
             console.log(`📝 Enqueuing jobs for: "${prompt.question}" (ID: ${prompt.id})`);
 
             // Get model IDs for this prompt
-            const modelIds = prompt.models.map((m: { id: number }) => m.id);
+            const modelIds = prompt.models.map((m: { id: string }) => m.id);
             
             // Fetch full model details
             const promptModels = await db
@@ -66,21 +67,39 @@ export async function GET(request: NextRequest) {
                 .where(inArray(models.id, modelIds));
 
             // Cap runs at 10 for safety
-            const runs = Math.min(prompt.runs, 10);
+            const numberOfPromptRuns = Math.min(prompt.runs, 10);
+            const totalRequiredJobs = numberOfPromptRuns * promptModels.length;
+
+            const [createdPromptRun] = await db.insert(promptRuns)
+                .values({
+                    promptId: prompt.id,
+                    status: 'processing',
+                    totalJobs: totalRequiredJobs,
+                    batchKey: batchKey,
+                    successfulJobs: 0,
+                    failedJobs: 0,
+                    createdAt: now,
+                    updatedAt: now,
+                })
+                .returning({ id: promptRuns.id });
+
+            if (!createdPromptRun) {
+                console.error(`❌ Failed to create prompt run for prompt ${prompt.id}`);
+                continue;
+            }
 
             // Create jobs for each model and run
             for (const model of promptModels) {
-                for (let runIndex = 0; runIndex < runs; runIndex++) {
+                for (let runIndex = 0; runIndex < numberOfPromptRuns; runIndex++) {
                     try {
                         const [job] = await db
                             .insert(promptJobs)
                             .values({
-                                promptId: prompt.id,
+                                promptRunId: createdPromptRun.id,
                                 modelId: model.id,
                                 runIndex,
-                                batchKey,
                                 status: 'queued',
-                                scheduledFor: now,
+                                createdAt: now,
                             })
                             .onConflictDoNothing()
                             .returning({ id: promptJobs.id });
@@ -88,9 +107,9 @@ export async function GET(request: NextRequest) {
                         if (job) {
                             totalJobsCreated++;
                             jobsToTrigger.push(job.id);
-                            console.log(`  ✅ Created job ${job.id} for ${model.provider}/${model.name} (run ${runIndex + 1}/${runs})`);
+                            console.log(`  ✅ Created job ${job.id} for ${model.provider}/${model.name} (run ${runIndex + 1}/${numberOfPromptRuns})`);
                         } else {
-                            console.log(`  ⏭️ Job already exists for ${model.provider}/${model.name} (run ${runIndex + 1}/${runs})`);
+                            console.log(`  ⏭️ Job already exists for ${model.provider}/${model.name} (run ${runIndex + 1}/${numberOfPromptRuns})`);
                         }
                     } catch (error) {
                         console.error(`  ❌ Failed to create job for model ${model.id}, run ${runIndex}:`, error);
@@ -98,11 +117,10 @@ export async function GET(request: NextRequest) {
                 }
             }
 
-            // Update lastRunAt for this prompt to prevent re-enqueuing
             await db
-                .update(prompts)
-                .set({ lastRunAt: now })
-                .where(eq(prompts.id, prompt.id));
+                .update(promptRuns)
+                .set({ status: 'completed' })
+                .where(eq(promptRuns.id, createdPromptRun.id));
         }
 
         console.log(`\n🔒 Created ${totalJobsCreated} new job(s), triggering processors...\n`);

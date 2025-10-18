@@ -1,5 +1,5 @@
 import db from '@/db';
-import { entities, models, prompts, promptJobs, responses } from '@/db/schema';
+import { entities, models, prompts, promptJobs, responses, promptRuns } from '@/db/schema';
 import { generateObject, generateText } from 'ai';
 import { eq, and, sql } from 'drizzle-orm';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
@@ -60,18 +60,18 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`\n🔄 Processing job ${jobId}...`);
-        console.log(`📋 Prompt ID: ${job.promptId}, Model ID: ${job.modelId}, Run: ${job.runIndex + 1}`);
+        console.log(`📋 Prompt Run ID: ${job.promptRunId}, Model ID: ${job.modelId}, Run: ${job.runIndex + 1}`);
 
         try {
             // Fetch the prompt and model
-            const [prompt] = await db.select().from(prompts).where(eq(prompts.id, job.promptId));
+            const [promptRun] = await db.select().from(promptRuns).where(eq(promptRuns.id, job.promptRunId)).leftJoin(prompts, eq(promptRuns.promptId, prompts.id));
             const [model] = await db.select().from(models).where(eq(models.id, job.modelId));
 
-            if (!prompt || !model) {
-                throw new Error(`Prompt or model not found: promptId=${job.promptId}, modelId=${job.modelId}`);
+            if (!promptRun || !promptRun.prompts || !model) {
+                throw new Error(`Prompt or model not found: promptId=${job.promptRunId}, modelId=${job.modelId}`);
             }
 
-            console.log(`📝 Prompt: "${prompt.question}"`);
+            console.log(`📝 Prompt: "${promptRun.prompts.question}"`);
             console.log(`🤖 Model: ${model.provider}/${model.name}`);
 
             // Set up SDK
@@ -106,10 +106,10 @@ export async function POST(request: NextRequest) {
                 const response = await generateObject({
                     model: sdkModel,
                     system: SYSTEM_PROMPT,
-                    prompt: prompt.question,
+                    prompt: promptRun.prompts.question,
                     output: "object",
                     schema: entitySchema,
-                    temperature: 0.3, // Lower temperature for more focused responses
+                    temperature: model.temperature ? 0.3 : undefined, // Lower temperature for more focused responses
                 });
 
                 output = response.object.entity;
@@ -119,8 +119,8 @@ export async function POST(request: NextRequest) {
                 const textResponse = await generateText({
                     model: sdkModel,
                     system: SYSTEM_PROMPT,
-                    prompt: prompt.question,
-                    temperature: 0.3,
+                    prompt: promptRun.prompts.question,
+                    temperature: model.temperature ? 0.3 : undefined,
                 });
                 output = textResponse.text;
             }
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
                 .insert(entities)
                 .values({
                     name: polishedOutput,
-                    category: prompt.category,
+                    category: promptRun.prompts.category,
                     totalMentions: 1,
                     lastMentionedAt: new Date()
                 })
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
             // Insert response
             await db.insert(responses).values({
-                promptId: prompt.id,
+                promptId: promptRun.prompts.id,
                 modelId: model.id,
                 entityId: entity.id,
                 responseText: output,
@@ -166,12 +166,17 @@ export async function POST(request: NextRequest) {
                     finishedAt: new Date(),
                 })
                 .where(eq(promptJobs.id, jobId));
+            
+            await db.update(promptRuns).set({
+                successfulJobs: sql`${promptRuns.successfulJobs} + 1`,
+            }).where(eq(promptRuns.id, job.promptRunId));
 
             console.log(`✅ Job ${jobId} completed successfully\n`);
 
             return NextResponse.json({
                 success: true,
                 jobId,
+                promptRunId: job.promptRunId,
                 status: 'succeeded',
                 entityId: entity.id
             });
@@ -188,6 +193,11 @@ export async function POST(request: NextRequest) {
                     finishedAt: new Date(),
                 })
                 .where(eq(promptJobs.id, jobId));
+
+            await db.update(promptRuns).set({
+                successfulJobs: sql`${promptRuns.successfulJobs} + 1`,
+                failedJobs: sql`${promptRuns.failedJobs} + 1`,
+            }).where(eq(promptRuns.id, job.promptRunId));
 
             console.error(`❌ Job ${jobId} failed:`, errorMessage);
 

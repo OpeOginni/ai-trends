@@ -1,5 +1,5 @@
 import db from '@/db';
-import { promptJobs, prompts, models } from '@/db/schema';
+import { promptJobs, prompts, models, promptRuns } from '@/db/schema';
 import { eq, desc, and } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
         const jobId = searchParams.get('jobId');
+        const promptRunId = searchParams.get('promptRunId');
         const batchKey = searchParams.get('batchKey');
         const promptId = searchParams.get('promptId');
         const status = searchParams.get('status');
@@ -31,7 +32,8 @@ export async function GET(request: NextRequest) {
             }
         })
         .from(promptJobs)
-        .leftJoin(prompts, eq(promptJobs.promptId, prompts.id))
+        .leftJoin(promptRuns, eq(promptJobs.promptRunId, promptRuns.id))
+        .leftJoin(prompts, eq(promptRuns.promptId, prompts.id))
         .leftJoin(models, eq(promptJobs.modelId, models.id))
         .orderBy(desc(promptJobs.createdAt))
         .limit(100);
@@ -39,14 +41,18 @@ export async function GET(request: NextRequest) {
         // Apply filters
         const conditions = [];
         if (jobId) {
-            conditions.push(eq(promptJobs.id, parseInt(jobId)));
+            conditions.push(eq(promptJobs.id, jobId));
         }
-        if (batchKey) {
-            conditions.push(eq(promptJobs.batchKey, batchKey));
+        if (promptRunId) {
+            conditions.push(eq(promptRuns.id, promptRunId));
         }
         if (promptId) {
-            conditions.push(eq(promptJobs.promptId, parseInt(promptId)));
+            conditions.push(eq(promptRuns.promptId, promptId));
         }
+        if (batchKey) {
+            conditions.push(eq(promptRuns.batchKey, batchKey));
+        }
+        
         if (status) {
             conditions.push(eq(promptJobs.status, status));
         }
