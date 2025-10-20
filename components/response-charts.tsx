@@ -1,8 +1,8 @@
 "use client"
 
-import { getPromptResponseAnalytics, getPromptResponses } from "@/server/responses"
+import { getPromptResponseAnalytics } from "@/server/responses"
 import { useQuery } from "@tanstack/react-query"
-import { ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "./ui/chart";
+import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "./ui/chart";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
 import { TrendingUp } from "lucide-react";
@@ -86,31 +86,30 @@ const CustomLegend = ({ allModels }: { allModels: string[] }) => (
                 tickFormatter={(value) => value}
             />
             <ChartTooltip content={<ChartTooltipContent className="w-[150px]" hideLabel/>} />
-            {/* <ChartLegend verticalAlign="top" content={<CustomLegend payload={allModels} />} /> */}
             {allModels
             .filter(model => !hiddenModels.has(model))
             .map((model, index) => {
                 return (
                     <Bar
+                    key={`${props.promptId}-${model}`}
                     dataKey={model}
                     stackId="a"
                     fill={chartConfig[model].color}
-                    radius={[2, 2, 2, 2]}
-                    // animationDuration={0}
+                    radius={[0, 0, 0, 0]}
                     />
                 )
             })}
         </BarChart>  
     </ChartContainer>
     </CardContent>
-      <CardFooter className="flex-col items-start gap-2 text-sm">
+      {/* <CardFooter className="flex-col items-start gap-2 text-sm">
         <div className="flex gap-2 leading-none font-medium">
           Trending up by 5.2% this month <TrendingUp className="h-4 w-4" />
         </div>
         <div className="text-muted-foreground leading-none">
           Showing total visitors for the last 6 months
         </div>
-      </CardFooter>
+      </CardFooter> */}
     </Card>
     )
 }

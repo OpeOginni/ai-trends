@@ -173,12 +173,17 @@ export async function POST(request: NextRequest) {
 
             console.log(`✅ Job ${jobId} completed successfully\n`);
 
+            const [updatedPrompt] = await db.update(prompts).set({
+                lastRunAt: new Date(),
+            }).where(eq(prompts.id, promptRun.prompts.id)).returning();
+
             return NextResponse.json({
                 success: true,
                 jobId,
                 promptRunId: job.promptRunId,
                 status: 'succeeded',
-                entityId: entity.id
+                entityId: entity.id,
+                propmtId: updatedPrompt.id,
             });
 
         } catch (error) {
