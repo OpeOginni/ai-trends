@@ -119,7 +119,7 @@ export const entities = pgTable(
       entityId: uuid("entity_id")
         .references(() => entities.id, { onDelete: "cascade" })
         .notNull(),
-      webSearchResults: jsonb("web_search_results"),
+      webSearchSources: jsonb("web_search_sources"),
       responseText: text("response_text"),
       timestamp: timestamp("timestamp").defaultNow(),
     },
@@ -162,7 +162,7 @@ export const entities = pgTable(
         .references(() => models.id, { onDelete: "cascade" })
         .notNull(),
       runIndex: bigint("run_index", { mode: "number" }).notNull(), // 0-based index for multiple runs
-      usedWebSearchTool: boolean("used_web_search_tool").default(false),
+      usingWebSearch: boolean("used_web_search_tool").default(false),
       webSearchResults: jsonb("web_search_results"),
       status: varchar("status", { length: 20 }).notNull().default("queued"), // queued | processing | successful | failed | skipped
       errorMessage: text("error_message"),
@@ -174,7 +174,7 @@ export const entities = pgTable(
     },
     (table) => [
       // Unique constraint to prevent duplicate jobs for same prompt/model/run/batch
-      unique("idx_prompt_jobs_unique").on(table.promptRunId, table.modelId, table.runIndex, table.usedWebSearchTool),
+      unique("idx_prompt_jobs_unique").on(table.promptRunId, table.modelId, table.runIndex, table.usingWebSearch),
       // Index for finding jobs to process
       index("idx_prompt_jobs_status").on(table.status, table.scheduledFor),
       index("idx_prompt_jobs_prompt").on(table.promptRunId, table.createdAt),

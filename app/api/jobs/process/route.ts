@@ -8,6 +8,10 @@ import { z } from 'zod';
 import { polishEntity } from '@/lib/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { createOpenAI } from '@ai-sdk/openai';
+import * as openAI from "@/server/providers/openai"
+import * as anthropic from "@/server/providers/anthropic"
+import * as google from "@/server/providers/google"
+import * as openrouter from "@/server/providers/openrouter"
 
 export async function POST(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
@@ -74,55 +78,43 @@ export async function POST(request: NextRequest) {
             console.log(`📝 Prompt: "${promptRun.prompts.question}"`);
             console.log(`🤖 Model: ${model.provider}/${model.name}`);
 
-            // Set up SDK
-            const openRouter = createOpenRouter({
-                apiKey: process.env.OPENROUTER_API_KEY as string,
-            });
-
-            const openAIRouter = createOpenAI({
-                apiKey: process.env.OPENAI_API_KEY as string,
-            });
-
-            // Define strict schema for entity extraction
-            const entitySchema = z.object({
-                entity: z.string()
-                    .min(1, "Entity cannot be empty")
-                    .max(64, "Entity name too long")
-                    .describe("The single entity name only, with no explanations or extra text")
-            });
-
             let output = "";
-            let sdkModel;
+            let webSources: string[] | null = null;
 
-            // Set up the correct SDK model
-            if (model.provider === "openai") {
-                sdkModel = openAIRouter(model.name);
+            if (job.usingWebSearch) {
+                switch (model.provider) {
+                    case "openai":
+                        const openAIResponse = await openAI.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = openAIResponse.response;
+                        webSources = openAIResponse.sources;
+                    case "google":
+                        const googleResponse = await google.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = googleResponse.response;
+                        webSources = googleResponse.sources;
+                    case "anthropic":
+                        const anthropicResponse = await anthropic.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = anthropicResponse.response;
+                        webSources = anthropicResponse.sources
+                    default:
+                        const openrouterResponse = await openrouter.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = openrouterResponse.response;
+                        webSources = openrouterResponse.sources;
+                }
             } else {
-                sdkModel = openRouter(model.name);
-            }
-
-            try {
-                // Always use generateObject for consistency and better output
-                const response = await generateObject({
-                    model: sdkModel,
-                    system: SYSTEM_PROMPT,
-                    prompt: promptRun.prompts.question,
-                    output: "object",
-                    schema: entitySchema,
-                    temperature: model.temperature ? 0.3 : undefined, // Lower temperature for more focused responses
-                });
-
-                output = response.object.entity;
-            } catch (error) {
-                console.error(`  ⚠️ Object generation failed, trying text fallback:`, error);
-
-                const textResponse = await generateText({
-                    model: sdkModel,
-                    system: SYSTEM_PROMPT,
-                    prompt: promptRun.prompts.question,
-                    temperature: model.temperature ? 0.3 : undefined,
-                });
-                output = textResponse.text;
+                switch (model.provider) {
+                    case "openai":
+                        const openAIResponse = await openAI.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = openAIResponse.response;
+                    case "google":
+                        const googleResponse = await google.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = googleResponse.response;
+                    case "anthropic":
+                        const anthropicResponse = await anthropic.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = anthropicResponse.response;
+                    default:
+                        const openrouterResponse = await openrouter.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = openrouterResponse.response;
+                }
             }
 
             console.log(`  ✅ Response: "${output}"`);
@@ -154,6 +146,7 @@ export async function POST(request: NextRequest) {
                 modelId: model.id,
                 entityId: entity.id,
                 responseText: output,
+                webSearchSources: webSources,
             });
 
             console.log(`  💾 Saved to DB (Entity ID: ${entity.id})`);

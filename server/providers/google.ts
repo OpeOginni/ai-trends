@@ -1,10 +1,10 @@
-import { createAnthropic, anthropic } from '@ai-sdk/anthropic';
-import { generateObject, NoObjectGeneratedError, generateText, Output } from "ai";
+import { createGoogleGenerativeAI, google } from '@ai-sdk/google';
+import { generateObject, NoObjectGeneratedError, generateText, Output, Tool } from "ai";
 import { SYSTEM_PROMPT } from "@/lib/system-prompt";
 import { z } from "zod";
 
-const anthropicRouter = createAnthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY as string,
+const googleGenerativeAIRouter = createGoogleGenerativeAI({
+    apiKey: process.env.GOOGLE_API_KEY as string,
 });
 
 const entitySchema = z.object({
@@ -14,25 +14,10 @@ const entitySchema = z.object({
         .describe("The single entity name only, with no explanations or extra text")
 });
 
-const anthropicWebSearchToolSchema = z.object({
-    maxUses: z.number(),
-    allowedDomains: z.array(z.string()).optional(),
-    blockedDomains: z.array(z.string()).optional(),
-    userLocation: z.object({
-        type: z.enum(["approximate"]),
-        country: z.string().optional(),
-        region: z.string().optional(),
-        city: z.string().optional(),
-        timezone: z.string().optional(),
-    }).optional()
-})
-
-type AnthropicWebSearchToolSchemaType = z.infer<typeof anthropicWebSearchToolSchema>;
-
-export async function getResponse(prompt: string, model: {name: string, temperature: boolean}): Promise<{response: string, generationType: "object" | "text"}> {
+export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, generationType: "object" | "text"}> {
     try {
         const { object } = await generateObject({
-            model: anthropicRouter(model.name),
+            model: googleGenerativeAIRouter(model.name),
             system: SYSTEM_PROMPT,
             prompt: prompt,
             output: "object",
@@ -46,7 +31,7 @@ export async function getResponse(prompt: string, model: {name: string, temperat
             console.error(`⚠️ Object generation failed, trying text fallback:`, error);
 
             const { text, experimental_output } = await generateText({
-                model: anthropicRouter(model.name),
+                model: googleGenerativeAIRouter(model.name),
                 system: SYSTEM_PROMPT,
                 prompt: prompt,
                 temperature: model.temperature ? 0.3 : undefined,
@@ -61,16 +46,10 @@ export async function getResponse(prompt: string, model: {name: string, temperat
     }
 }
 
-export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean}, webSearchConfig?: AnthropicWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
+export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, sources: string[]}> {
     try {
-        const defualtConfig: AnthropicWebSearchToolSchemaType = {
-            maxUses: 3,
-        }
-
-        const config = webSearchConfig ? webSearchConfig : defualtConfig;
-
-        const { text, sources } = await generateText({
-            model: anthropicRouter(model.name),
+        const { text, sources, providerMetadata } = await generateText({
+            model: googleGenerativeAIRouter(model.name),
             system: SYSTEM_PROMPT,
             prompt: prompt,
             temperature: model.temperature ? 0.3 : undefined,
@@ -78,8 +57,9 @@ export async function getResponseWithWebSearch(prompt: string, model: {name: str
                 schema: entitySchema
             }),
             tools: {
-                web_search: anthropic.tools.webSearch_20250305(config), // https://ai-sdk.dev/providers/ai-sdk-providers/anthropic#web-search-tool
-              }
+                google_search: google.tools.googleSearch({}) as unknown as Tool<never, never>,
+            },
+            toolChoice: { type: 'tool', toolName: 'google_search' },
         });
 
         const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")

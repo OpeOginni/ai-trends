@@ -25,7 +25,7 @@ const openAIWebSearchToolSchema = z.object({
 
 type OpenAIWebSearchToolSchemaType = z.infer<typeof openAIWebSearchToolSchema>;
 
-export async function getResponse(prompt: string, model: {name: string, temperature: boolean}): Promise<{response: string, generationType: "object" | "text"}> {
+export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, generationType: "object" | "text"}> {
     try {
         const { object } = await generateObject({
             model: openAIRouter(model.name),
@@ -57,7 +57,7 @@ export async function getResponse(prompt: string, model: {name: string, temperat
     }
 }
 
-export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean}, webSearchConfig?: OpenAIWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
+export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null}, webSearchConfig?: OpenAIWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
     try {
         const defualtConfig: OpenAIWebSearchToolSchemaType = {
             searchContextSize: 'medium',
@@ -79,6 +79,7 @@ export async function getResponseWithWebSearch(prompt: string, model: {name: str
                     userLocation: config.userLocation
                 }),
               },
+            toolChoice: { type: 'tool', toolName: 'web_search' }, 
         });
 
         const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")

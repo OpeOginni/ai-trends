@@ -1,9 +1,11 @@
 import { SYSTEM_PROMPT } from "@/lib/system-prompt";
+import { google } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateObject } from "ai";
+import { generateObject, generateText, NoObjectGeneratedError, Output, Tool } from "ai";
 import { z } from "better-auth";
+import { AnthropicWebSearchToolSchemaType } from "./anthropic";
 
-const client = createOpenRouter({
+const openRouter = createOpenRouter({
     apiKey: process.env.OPENROUTER_API_KEY as string,
 })
 
@@ -14,13 +16,61 @@ const entitySchema = z.object({
         .describe("The single entity name only, with no explanations or extra text")
 });
 
-export async function getResponse(prompt: string, model: string) {
-    const response = await generateObject({
-        model: client(model),
-        system: SYSTEM_PROMPT,
-        prompt: prompt,
-        output: "object",
-        schema: entitySchema,
-        temperature: 0.3,
-    })
+export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, generationType: "object" | "text"}> {
+    try {
+        const { object } = await generateObject({
+            model: openRouter(model.name),
+            system: SYSTEM_PROMPT,
+            prompt: prompt,
+            output: "object",
+            schema: entitySchema,
+            temperature: model.temperature ? 0.3 : undefined
+        })
+
+        return {response: object.entity, generationType: "object"};
+    } catch (error) {
+        if (error instanceof NoObjectGeneratedError) {
+            console.error(`⚠️ Object generation failed, trying text fallback:`, error);
+
+            const { text, experimental_output } = await generateText({
+                model: openRouter(model.name),
+                system: SYSTEM_PROMPT,
+                prompt: prompt,
+                temperature: model.temperature ? 0.3 : undefined,
+                experimental_output: Output.object({
+                    schema: entitySchema
+                }),
+            });
+            return {response: experimental_output.entity, generationType: "text"};
+        }
+
+        throw error;
+    }
+}
+
+export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null}, webSearchConfig?: AnthropicWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
+    try {
+        const { text, sources } = await generateText({
+            model: openRouter(model.name),
+            system: SYSTEM_PROMPT,
+            prompt: prompt,
+            temperature: model.temperature ? 0.3 : undefined,
+            experimental_output: Output.object({
+                schema: entitySchema
+            }),
+            tools: {
+                google_search: google.tools.googleSearch({}) as unknown as Tool<never, never>,
+              },
+            toolChoice: { type: 'tool', toolName: 'google_search' },
+        });
+
+        const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")
+
+        return {response: text, sources: sourceUrls};
+    } catch (error) {
+        // Throw error to be used later and stored
+        console.log(error)
+
+        throw error;
+    }
 }

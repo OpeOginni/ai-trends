@@ -69,9 +69,9 @@ export async function GET(request: NextRequest) {
             // Cap runs at 10 for safety
             const useWebSearchTool = prompt.useWebSearchTool;
 
-            const numberOfPromptRuns = Math.min(prompt.runs, 10) * (useWebSearchTool ? 2 : 1); // If useWebSearchTool is null, we need to run the prompt twice (once with web search tool and once without web search tool)
+            const totalModelRunsOfPrompt = Math.min(prompt.runs, 5) * (useWebSearchTool === null ? 2 : 1); // If useWebSearchTool is null, we need to run the prompt twice (once with web search tool and once without web search tool)
 
-            const totalRequiredJobs = numberOfPromptRuns * promptModels.length;
+            const totalRequiredJobs = totalModelRunsOfPrompt * promptModels.length;
 
             const [createdPromptRun] = await db.insert(promptRuns)
                 .values({
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
 
             // Create jobs for each model and run
             for (const model of promptModels) {
-                for (let runIndex = 0; runIndex < numberOfPromptRuns; runIndex++) {
+                for (let runIndex = 0; runIndex < totalModelRunsOfPrompt; runIndex++) {
                     try {
                         const [job] = await db
                             .insert(promptJobs)
@@ -102,6 +102,10 @@ export async function GET(request: NextRequest) {
                                 modelId: model.id,
                                 runIndex,
                                 status: 'queued',
+                                // If useWebSearchTool is null, we need to run the prompt twice (once with web search tool and once without web search tool)
+                                // If useWebSearchTool is true, we need to run the prompt with the web search tool
+                                // If useWebSearchTool is false, we need to run the prompt without the web search tool
+                                usingWebSearch: useWebSearchTool === null ? runIndex % 2 === 0 : useWebSearchTool,
                                 createdAt: now,
                             })
                             .onConflictDoNothing()
@@ -110,9 +114,9 @@ export async function GET(request: NextRequest) {
                         if (job) {
                             totalJobsCreated++;
                             jobsToTrigger.push(job.id);
-                            console.log(`  ✅ Created job ${job.id} for ${model.provider}/${model.name} (run ${runIndex + 1}/${numberOfPromptRuns})`);
+                            console.log(`  ✅ Created job ${job.id} for ${model.provider}/${model.name} (run ${runIndex + 1}/${totalModelRunsOfPrompt})`);
                         } else {
-                            console.log(`  ⏭️ Job already exists for ${model.provider}/${model.name} (run ${runIndex + 1}/${numberOfPromptRuns})`);
+                            console.log(`  ⏭️ Job already exists for ${model.provider}/${model.name} (run ${runIndex + 1}/${totalModelRunsOfPrompt})`);
                         }
                     } catch (error) {
                         console.error(`  ❌ Failed to create job for model ${model.id}, run ${runIndex}:`, error);

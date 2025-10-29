@@ -8,6 +8,11 @@ import { z } from 'zod';
 import { polishEntity } from '@/lib/helpers';
 import { NextRequest, NextResponse } from 'next/server';
 import { createOpenAI } from '@ai-sdk/openai';
+import { AnthropicWebSearchToolSchemaType } from '@/server/providers/anthropic';
+import * as openAI from "@/server/providers/openai"
+import * as anthropic from "@/server/providers/anthropic"
+import * as google from "@/server/providers/google"
+import * as openrouter from "@/server/providers/openrouter"
 
 // Simple in-memory cache for idempotency (expires after 5 minutes)
 const processingCache = new Map<number, { timestamp: number; promise: Promise<any> }>();
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 }
 
-async function processPrompt(promptId: string, useWebSearchTool: boolean = false) {
+async function processPrompt(promptId: string, useWebSearchTool: boolean = false, webSearchConfig?: AnthropicWebSearchToolSchemaType) {
     // Fetch the specific prompt
     const [prompt] = await db.select().from(prompts).where(eq(prompts.id, promptId));
 
@@ -84,27 +89,12 @@ async function processPrompt(promptId: string, useWebSearchTool: boolean = false
     console.log(`📝 Prompt: "${prompt.question}"`);
     console.log(`📊 Category: ${prompt.category}`);
 
-    const openRouter = createOpenRouter({
-        apiKey: process.env.OPENROUTER_API_KEY as string,
-    });
-
-    const openAIRouter = createOpenAI({
-        apiKey: process.env.OPENAI_API_KEY as string,
-    });
-
     // Get the models for this prompt
     const promptModels = await db.select().from(models).where(inArray(models.id, prompt.models.map((model: any) => model.id)));
+
     const runs = Math.min(prompt.runs, 10); // Cap runs at 10 for safety
 
     console.log(`🤖 Processing ${promptModels.length} model(s) with ${runs} run(s) each\n`);
-
-    // Define strict schema for entity extraction
-    const entitySchema = z.object({
-        entity: z.string()
-            .min(1, "Entity cannot be empty")
-            .max(64, "Entity name too long")
-            .describe("The single entity name only, with no explanations or extra text")
-    });
 
     // Process each model
     for (const model of promptModels) {
@@ -112,41 +102,44 @@ async function processPrompt(promptId: string, useWebSearchTool: boolean = false
         
         for (let i = 0; i < runs; i++) {
             console.log(`  Run ${i + 1}/${runs}...`);
-            
+
             let output = "";
-            let sdkModel;
+            let webSources: string[] | null = null;
 
-            // Set up the correct SDK model
-            if (model.provider === "openai") {
-                sdkModel = openAIRouter(model.name);
+            if (useWebSearchTool) {
+                switch (model.provider) {
+                    case "openai":
+                        const openAIResponse = await openAI.getResponseWithWebSearch(prompt.id, {name: model.name, temperature: model.temperature})
+                        output = openAIResponse.response;
+                        webSources = openAIResponse.sources;
+                    case "google":
+                        const googleResponse = await google.getResponseWithWebSearch(prompt.id, {name: model.name, temperature: model.temperature})
+                        output = googleResponse.response;
+                        webSources = googleResponse.sources;
+                    case "anthropic":
+                        const anthropicResponse = await anthropic.getResponseWithWebSearch(prompt.id, {name: model.name, temperature: model.temperature})
+                        output = anthropicResponse.response;
+                        webSources = anthropicResponse.sources
+                    default:
+                        const openrouterResponse = await openrouter.getResponseWithWebSearch(prompt.id, {name: model.name, temperature: model.temperature})
+                        output = openrouterResponse.response;
+                        webSources = openrouterResponse.sources;
+                }
             } else {
-                sdkModel = openRouter(model.name);
-            }
-
-            try {
-                // Always use generateObject for consistency and better output
-                const response = await generateObject({
-                    model: sdkModel,
-                    system: SYSTEM_PROMPT,
-                    prompt: prompt.question,
-                    output: "object",
-                    schema: entitySchema,
-                    temperature: model.temperature ? 0.3 : undefined, // Lower temperature for more focused responses
-                });
-
-                output = response.object.entity;
-            } catch (error) {
-                console.error(`  ⚠️ Object generation failed, trying text fallback:`, error);
-                
-                // Fallback to text generation if object generation fails
-                const { generateText } = await import('ai');
-                const textResponse = await generateText({
-                    model: sdkModel,
-                    system: SYSTEM_PROMPT,
-                    prompt: prompt.question,
-                    temperature: 0.3,
-                });
-                output = textResponse.text;
+                switch (model.provider) {
+                    case "openai":
+                        const openAIResponse = await openAI.getResponse(prompt.id, {name: model.name, temperature: model.temperature})
+                        output = openAIResponse.response;
+                    case "google":
+                        const googleResponse = await google.getResponse(prompt.id, {name: model.name, temperature: model.temperature})
+                        output = googleResponse.response;
+                    case "anthropic":
+                        const anthropicResponse = await anthropic.getResponse(prompt.id, {name: model.name, temperature: model.temperature})
+                        output = anthropicResponse.response;
+                    default:
+                        const openrouterResponse = await openrouter.getResponse(prompt.id, {name: model.name, temperature: model.temperature})
+                        output = openrouterResponse.response;
+                }
             }
 
             console.log(`  ✅ Response: "${output}"`);
@@ -178,6 +171,7 @@ async function processPrompt(promptId: string, useWebSearchTool: boolean = false
                 modelId: model.id,
                 entityId: entity.id,
                 responseText: output,
+                webSearchSources: webSources,
             });
 
             console.log(`  💾 Saved to DB (Entity ID: ${entity.id})`);
