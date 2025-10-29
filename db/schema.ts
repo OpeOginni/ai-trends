@@ -1,7 +1,7 @@
 import { format } from "date-fns";
-import { pgTable, text, timestamp, boolean, serial, varchar, bigint, index, integer, numeric, date, jsonb, unique, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, varchar, bigint, index, integer, jsonb, unique, uuid } from "drizzle-orm/pg-core";
 
-// AUTH SCHEMA
+// // AUTH SCHEMA
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -68,6 +68,7 @@ export const prompts = pgTable("prompts", {
     question: text("question").notNull(),
     frequency: varchar("frequency", { length: 50 }).default("single"), // e.g. "daily", "weekly", "monthly", "single"
     runs: integer("runs").default(1).notNull(),
+    useWebSearchTool: boolean("use_web_search_tool").default(false), // null => both; true => web only; false => no-web only
     active: boolean("active").default(true),
     isHighlighted: boolean("is_highlighted").default(false),
     models: jsonb("models").notNull().$type<{ id: string }[]>(),
@@ -83,6 +84,7 @@ export const models = pgTable("models", {
     supportsObjectOutput: boolean("supports_object_output").default(false),
     reasoning: boolean("reasoning").default(false),
     hasWebAccess: boolean("has_web_access").default(false),
+    nativeWebSearchTool: boolean("native_web_search_tool").default(false),
     temperature: boolean("temperature").default(false),
     knowledge: text("knowledge"),
     category: text("category").notNull()
@@ -117,6 +119,7 @@ export const entities = pgTable(
       entityId: uuid("entity_id")
         .references(() => entities.id, { onDelete: "cascade" })
         .notNull(),
+      webSearchResults: jsonb("web_search_results"),
       responseText: text("response_text"),
       timestamp: timestamp("timestamp").defaultNow(),
     },
@@ -159,6 +162,8 @@ export const entities = pgTable(
         .references(() => models.id, { onDelete: "cascade" })
         .notNull(),
       runIndex: bigint("run_index", { mode: "number" }).notNull(), // 0-based index for multiple runs
+      usedWebSearchTool: boolean("used_web_search_tool").default(false),
+      webSearchResults: jsonb("web_search_results"),
       status: varchar("status", { length: 20 }).notNull().default("queued"), // queued | processing | successful | failed | skipped
       errorMessage: text("error_message"),
       attemptCount: integer("attempt_count").default(0).notNull(),
@@ -169,7 +174,7 @@ export const entities = pgTable(
     },
     (table) => [
       // Unique constraint to prevent duplicate jobs for same prompt/model/run/batch
-      unique("idx_prompt_jobs_unique").on(table.promptRunId, table.modelId, table.runIndex),
+      unique("idx_prompt_jobs_unique").on(table.promptRunId, table.modelId, table.runIndex, table.usedWebSearchTool),
       // Index for finding jobs to process
       index("idx_prompt_jobs_status").on(table.status, table.scheduledFor),
       index("idx_prompt_jobs_prompt").on(table.promptRunId, table.createdAt),

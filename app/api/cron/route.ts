@@ -67,7 +67,10 @@ export async function GET(request: NextRequest) {
                 .where(inArray(models.id, modelIds));
 
             // Cap runs at 10 for safety
-            const numberOfPromptRuns = Math.min(prompt.runs, 10);
+            const useWebSearchTool = prompt.useWebSearchTool;
+
+            const numberOfPromptRuns = Math.min(prompt.runs, 10) * (useWebSearchTool ? 2 : 1); // If useWebSearchTool is null, we need to run the prompt twice (once with web search tool and once without web search tool)
+
             const totalRequiredJobs = numberOfPromptRuns * promptModels.length;
 
             const [createdPromptRun] = await db.insert(promptRuns)

@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 }
 
-async function processPrompt(promptId: string) {
+async function processPrompt(promptId: string, useWebSearchTool: boolean = false) {
     // Fetch the specific prompt
     const [prompt] = await db.select().from(prompts).where(eq(prompts.id, promptId));
 
