@@ -69,7 +69,7 @@ export async function getResponseWithWebSearch(prompt: string, model: {name: str
 
         const config = webSearchConfig ? webSearchConfig : defualtConfig;
 
-        const { text, sources } = await generateText({
+        const { experimental_output, sources } = await generateText({
             model: anthropicRouter(model.name),
             system: SYSTEM_PROMPT,
             prompt: prompt,
@@ -85,7 +85,7 @@ export async function getResponseWithWebSearch(prompt: string, model: {name: str
 
         const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")
 
-        return {response: text, sources: sourceUrls};
+        return {response: experimental_output.entity, sources: sourceUrls};
     } catch (error) {
         // Throw error to be used later and stored
         console.log(error)
