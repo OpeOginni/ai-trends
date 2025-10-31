@@ -10,7 +10,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed:models": "bun run db/seed/models.ts",
-    "db:seed:prompts": "bun run db/seed/prompts.ts"
+    "db:seed:prompts": "bun run db/seed/prompts.ts",
+    "db:seed:update-prompts": "bun run db/seed/update-prompts.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.39",

@@ -7,8 +7,8 @@ async function seedPrompts() {
     const fetchedModels = await db.select().from(models)
 
 
-    const modelIds = fetchedModels.map((model) => ({id: model.id}))
-
+    const modelIds = fetchedModels.filter((model) => model.hasWebAccess).map((model) => ({id: model.id}))
+    
     const newPrompts: NewPrompt[] = [
         {
             category: "celebrities",
@@ -17,7 +17,8 @@ async function seedPrompts() {
             runs: 2,
             active: true,
             isHighlighted: true,
-            models: modelIds
+            models: modelIds,
+            useWebSearchTool: null
         },
         {
             category: "celebrities",
@@ -26,7 +27,8 @@ async function seedPrompts() {
             runs: 2,
             active: true,
             isHighlighted: true,
-            models: modelIds
+            models: modelIds,
+            useWebSearchTool: null
         },
         {
             category: "location",
@@ -35,7 +37,8 @@ async function seedPrompts() {
             runs: 2,
             active: true,
             isHighlighted: true,
-            models: modelIds
+            models: modelIds,
+            useWebSearchTool: null
         },
         {
             category: "hardware",
@@ -44,7 +47,8 @@ async function seedPrompts() {
             runs: 2,
             active: true,
             isHighlighted: true,
-            models: modelIds
+            models: modelIds,
+            useWebSearchTool: null
         },
         {
             category: "software",
@@ -53,7 +57,8 @@ async function seedPrompts() {
             runs: 2,
             active: true,
             isHighlighted: true,
-            models: modelIds
+            models: modelIds,
+            useWebSearchTool: null
         },
         {
             category: "software",
@@ -62,7 +67,8 @@ async function seedPrompts() {
             runs: 2,
             active: true,
             isHighlighted: true,
-            models: modelIds
+            models: modelIds,
+            useWebSearchTool: null
         }
     ]
 
