@@ -16,6 +16,7 @@
     "@ai-sdk/anthropic": "^2.0.39",
     "@ai-sdk/google": "^2.0.25",
     "@ai-sdk/openai": "^2.0.52",
+    "@ai-sdk/xai": "^2.0.29",
     "@anthropic-ai/sdk": "^0.67.0",
     "@google/genai": "^1.27.0",
     "@openrouter/ai-sdk-provider": "^1.2.0",

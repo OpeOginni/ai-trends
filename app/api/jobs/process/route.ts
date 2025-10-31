@@ -12,6 +12,7 @@ import * as openAI from "@/server/providers/openai"
 import * as anthropic from "@/server/providers/anthropic"
 import * as google from "@/server/providers/google"
 import * as openrouter from "@/server/providers/openrouter"
+import * as xai from "@/server/providers/xai"
 
 export async function POST(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
@@ -95,6 +96,10 @@ export async function POST(request: NextRequest) {
                         const anthropicResponse = await anthropic.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
                         output = anthropicResponse.response;
                         webSources = anthropicResponse.sources
+                    case "xai":
+                        const xAIResponse = await xai.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = xAIResponse.response;
+                        webSources = xAIResponse.sources;
                     default:
                         const openrouterResponse = await openrouter.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
                         output = openrouterResponse.response;
@@ -111,6 +116,9 @@ export async function POST(request: NextRequest) {
                     case "anthropic":
                         const anthropicResponse = await anthropic.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
                         output = anthropicResponse.response;
+                    case "xai":
+                        const xAIResponse = await xai.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        output = xAIResponse.response;
                     default:
                         const openrouterResponse = await openrouter.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
                         output = openrouterResponse.response;
