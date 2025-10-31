@@ -1,7 +1,7 @@
 "use server"
 
 import db from "@/db";
-import { entities, models, responses } from "@/db/schema";
+import { entities, models, responses, promptJobs, promptRuns } from "@/db/schema";
 import { between, eq, and, count } from "drizzle-orm"
 import { endOfDay, startOfDay } from "date-fns"
 import { getPrompt } from "./prompts";
@@ -42,7 +42,8 @@ export async function getPromptResponseAnalytics(promptId: string, dateTimestamp
     if(!prompt) {
         return {
             prompt: null,
-            analytics: []
+            analytics: [],
+            sources: {}
         };
     }
 
@@ -54,33 +55,91 @@ export async function getPromptResponseAnalytics(promptId: string, dateTimestamp
         dayEnd = endOfDay(prompt.lastRunAt ?? new Date());
     }
 
-    const rawCounts = await db.select({
+    // Get all responses with their web search status
+    const rawResponses = await db.select({
         entity: entities.name,
         model: models.name,
-        count: count(responses.id)
+        webSearchSources: responses.webSearchSources,
     })
     .from(responses)
     .where(and(
         eq(responses.promptId, promptId), 
         between(responses.timestamp, dayStart, dayEnd)
-    )).leftJoin(models, eq(responses.modelId, models.id))
+    ))
+    .leftJoin(models, eq(responses.modelId, models.id))
     .leftJoin(entities, eq(responses.entityId, entities.id))
-    .groupBy(entities.name, models.name)
+    
+    // Group and count in JavaScript to handle web search variants properly
+    const groupedCounts = new Map<string, { count: number; webSearchSources: any }>();
+    rawResponses.forEach(row => {
+        if (!row.entity || !row.model) return;
+        
+        const simpleModelName = row.model.includes("/") ? row.model.split("/")[1] : row.model;
+        // webSearchSources is null for non-web search jobs, array (possibly empty) for web search jobs
+        const hasWebSearch = row.webSearchSources !== null;
+        const modelKey = hasWebSearch ? `${simpleModelName} (web)` : simpleModelName;
+        const groupKey = `${row.entity}::${modelKey}`;
+        
+        const existing = groupedCounts.get(groupKey);
+        if (existing) {
+            existing.count += 1;
+        } else {
+            groupedCounts.set(groupKey, {
+                count: 1,
+                webSearchSources: row.webSearchSources
+            });
+        }
+    });
+    
+    const rawCounts = Array.from(groupedCounts.entries()).map(([key, data]) => {
+        const [entity, model] = key.split('::');
+        return {
+            entity,
+            model,
+            count: data.count,
+            webSearchSources: data.webSearchSources
+        };
+    });
+
+    // Collect sources grouped by entity and model variant
+    const sourcesMap: Record<string, Record<string, string[]>> = {};
 
     const analyticsArray = rawCounts.reduce((acc, row) => {
+        if (!row.entity) return acc;
+        
         // Try to find an existing object for this entity
         const existing = acc.find(item => item.entity === row.entity);
 
-        const simpleModelName = row.model?.includes("/") ? row.model?.split("/")[1] : row.model;
+        // Determine if this is a web search variant
+        // webSearchSources is null for non-web search jobs, array (possibly empty) for web search jobs
+        const hasWebSearch = row.webSearchSources !== null;
+
+        // Store sources if web search was used and sources exist
+        if (hasWebSearch && Array.isArray(row.webSearchSources) && row.webSearchSources.length > 0) {
+            const entityName = row.entity;
+            if (!sourcesMap[entityName]) {
+                sourcesMap[entityName] = {};
+            }
+            if (!sourcesMap[entityName][row.model]) {
+                sourcesMap[entityName][row.model] = [];
+            }
+            // Add unique sources
+            const sources = row.webSearchSources.filter((s: string) => s && s.trim() !== '') as string[];
+            sources.forEach((source: string) => {
+                if (!sourcesMap[entityName][row.model].includes(source)) {
+                    sourcesMap[entityName][row.model].push(source);
+                }
+            });
+        }
 
         if (existing) {
             // If it exists, add or update the model count
-            existing[simpleModelName!] = (existing[simpleModelName!] ?? 0) + Number(row.count);
+            existing[row.model] = (existing[row.model] ?? 0) + Number(row.count);
         } else {
             // If not, create a new entry with entity and model count
             acc.push({
-                entity: row.entity!,
-                [simpleModelName!]: Number(row.count)
+                entity: row.entity,
+                [row.model]: Number(row.count)
             });
         }
 
@@ -89,6 +148,7 @@ export async function getPromptResponseAnalytics(promptId: string, dateTimestamp
 
     return {
         prompt: prompt,
-        analytics: analyticsArray
+        analytics: analyticsArray,
+        sources: sourcesMap
     };
 }

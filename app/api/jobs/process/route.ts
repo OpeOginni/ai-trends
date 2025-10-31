@@ -81,47 +81,69 @@ export async function POST(request: NextRequest) {
 
             let output = "";
             let webSources: string[] | null = null;
+            let usedWebSearch = false;
 
             if (job.usingWebSearch) {
+                usedWebSearch = true;
                 switch (model.provider) {
-                    case "openai":
-                        const openAIResponse = await openAI.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                    case "openai": {
+                        const openAIResponse = await openAI.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = openAIResponse.response;
                         webSources = openAIResponse.sources;
-                    case "google":
-                        const googleResponse = await google.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        break;
+                    }
+                    case "google": {
+                        const googleResponse = await google.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = googleResponse.response;
                         webSources = googleResponse.sources;
-                    case "anthropic":
-                        const anthropicResponse = await anthropic.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        break;
+                    }
+                    case "anthropic": {
+                        const anthropicResponse = await anthropic.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = anthropicResponse.response;
-                        webSources = anthropicResponse.sources
-                    case "xai":
-                        const xAIResponse = await xai.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        webSources = anthropicResponse.sources;
+                        break;
+                    }
+                    case "xai": {
+                        const xAIResponse = await xai.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = xAIResponse.response;
                         webSources = xAIResponse.sources;
-                    default:
-                        const openrouterResponse = await openrouter.getResponseWithWebSearch(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        break;
+                    }
+                    default: {
+                        const openrouterResponse = await openrouter.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = openrouterResponse.response;
                         webSources = openrouterResponse.sources;
+                        break;
+                    }
                 }
             } else {
                 switch (model.provider) {
-                    case "openai":
-                        const openAIResponse = await openAI.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                    case "openai": {
+                        const openAIResponse = await openAI.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = openAIResponse.response;
-                    case "google":
-                        const googleResponse = await google.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        break;
+                    }
+                    case "google": {
+                        const googleResponse = await google.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = googleResponse.response;
-                    case "anthropic":
-                        const anthropicResponse = await anthropic.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        break;
+                    }
+                    case "anthropic": {
+                        const anthropicResponse = await anthropic.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = anthropicResponse.response;
-                    case "xai":
-                        const xAIResponse = await xai.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        break;
+                    }
+                    case "xai": {
+                        const xAIResponse = await xai.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = xAIResponse.response;
-                    default:
-                        const openrouterResponse = await openrouter.getResponse(promptRun.prompts.id, {name: model.name, temperature: model.temperature})
+                        break;
+                    }
+                    default: {
+                        const openrouterResponse = await openrouter.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
                         output = openrouterResponse.response;
+                        break;
+                    }
                 }
             }
 
@@ -149,12 +171,14 @@ export async function POST(request: NextRequest) {
                 .returning({ id: entities.id });
 
             // Insert response
+            // For web search jobs: save webSources array (even if empty)
+            // For non-web search jobs: save null to distinguish them
             await db.insert(responses).values({
                 promptId: promptRun.prompts.id,
                 modelId: model.id,
                 entityId: entity.id,
                 responseText: output,
-                webSearchSources: webSources,
+                webSearchSources: usedWebSearch ? (webSources ?? []) : null,
             });
 
             console.log(`  💾 Saved to DB (Entity ID: ${entity.id})`);
