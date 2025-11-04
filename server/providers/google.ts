@@ -1,4 +1,4 @@
-import { createGoogleGenerativeAI, google } from '@ai-sdk/google';
+import { createGoogleGenerativeAI, google, GoogleGenerativeAIProviderMetadata } from '@ai-sdk/google';
 import { generateObject, NoObjectGeneratedError, generateText, Output, Tool } from "ai";
 import { SYSTEM_PROMPT } from "@/lib/system-prompt";
 import { z } from "zod";
@@ -14,7 +14,7 @@ const entitySchema = z.object({
         .describe("The single entity name only, with no explanations or extra text")
 });
 
-export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, generationType: "object" | "text"}> {
+export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}): Promise<{response: string, generationType: "object" | "text"}> {
     try {
         const { object } = await generateObject({
             model: googleGenerativeAIRouter(model.name),
@@ -30,41 +30,50 @@ export async function getResponse(prompt: string, model: {name: string, temperat
         if (error instanceof NoObjectGeneratedError) {
             console.error(`⚠️ Object generation failed, trying text fallback:`, error);
 
-            const { text, experimental_output } = await generateText({
+            const { text, output } = await generateText({
                 model: googleGenerativeAIRouter(model.name),
                 system: SYSTEM_PROMPT,
                 prompt: prompt,
                 temperature: model.temperature ? 0.3 : undefined,
-                experimental_output: Output.object({
+                output: model.supportsObjectOutput ? Output.object({
                     schema: entitySchema
-                }),
+                }) : undefined,
             });
-            return {response: experimental_output.entity, generationType: "text"};
+
+            const response = model.supportsObjectOutput ? output.entity : text;
+            return {response: response, generationType: "text"};
         }
 
         throw error;
     }
 }
 
-export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, sources: string[]}> {
+export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}): Promise<{response: string, sources: string[]}> {
     try {
-        const { experimental_output, sources, providerMetadata } = await generateText({
+        const { output, sources, text, providerMetadata, toolCalls, toolResults, dynamicToolCalls, content } = await generateText({
             model: googleGenerativeAIRouter(model.name),
             system: SYSTEM_PROMPT,
             prompt: prompt,
             temperature: model.temperature ? 0.3 : undefined,
-            experimental_output: Output.object({
+            output: model.supportsObjectOutput ? Output.object({
                 schema: entitySchema
-            }),
+            }) : undefined,
             tools: {
-                google_search: google.tools.googleSearch({}) as unknown as Tool<never, never>,
+                google_search: googleGenerativeAIRouter.tools.googleSearch({
+                    needsApproval: false,
+                }) as unknown as Tool<never, never>,
             },
-            toolChoice: { type: 'tool', toolName: 'google_search' },
+            // toolChoice: { type: 'tool', toolName: 'google_search' },
         });
+
+        const googleMetadata = providerMetadata?.google as
+        | GoogleGenerativeAIProviderMetadata
+        | undefined;
 
         const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")
 
-        return {response: experimental_output.entity, sources: sourceUrls};
+        const response = model.supportsObjectOutput ? output.entity : text;
+        return {response: response, sources: sourceUrls};
     } catch (error) {
         // Throw error to be used later and stored
         console.log(error)

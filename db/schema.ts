@@ -81,7 +81,7 @@ export const models = pgTable("models", {
     name: varchar("name", { length: 100 }).notNull(), // e.g. "gpt-5"
     provider: varchar("provider", { length: 100 }).notNull(), // e.g. "OpenAI"
     openWeights: boolean("open_weights").default(false),
-    supportsObjectOutput: boolean("supports_object_output").default(false),
+    supportsObjectOutput: boolean("supports_object_output").default(false).notNull(),
     reasoning: boolean("reasoning").default(false),
     hasWebAccess: boolean("has_web_access").default(false),
     nativeWebSearchTool: boolean("native_web_search_tool").default(false),

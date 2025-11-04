@@ -25,7 +25,7 @@ const openAIWebSearchToolSchema = z.object({
 
 type OpenAIWebSearchToolSchemaType = z.infer<typeof openAIWebSearchToolSchema>;
 
-export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, generationType: "object" | "text"}> {
+export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}): Promise<{response: string, generationType: "object" | "text"}> {
     try {
         const { object } = await generateObject({
             model: openAIRouter(model.name),
@@ -40,41 +40,42 @@ export async function getResponse(prompt: string, model: {name: string, temperat
     } catch (error) {
         if (error instanceof NoObjectGeneratedError) {
             console.error(`⚠️ Object generation failed, trying text fallback:`, error);
-            const { text, experimental_output } = await generateText({
+            const { text, output } = await generateText({
                 model: openAIRouter(model.name),
                 system: SYSTEM_PROMPT,
                 prompt: prompt,
                 temperature: model.temperature ? 0.3 : undefined,
-                experimental_output: Output.object({
+                output: model.supportsObjectOutput ? Output.object({
                     schema: entitySchema
-                }),
+                }) : undefined,
             });
             
-            return {response: experimental_output.entity, generationType: "text"};
+            const response = model.supportsObjectOutput ? output.entity : text;
+            return {response: response, generationType: "text"};
         }
 
         throw error;
     }
 }
 
-export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null}, webSearchConfig?: OpenAIWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
+export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}, webSearchConfig?: OpenAIWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
     try {
         const defualtConfig: OpenAIWebSearchToolSchemaType = {
-            searchContextSize: 'medium',
+            searchContextSize: 'high',
         }
 
         const config = webSearchConfig ? webSearchConfig : defualtConfig;
 
-        const { experimental_output, sources } = await generateText({
+        const { output, sources, text } = await generateText({
             model: openAIRouter(model.name),
             system: SYSTEM_PROMPT,
             prompt: prompt,
             temperature: model.temperature ? 0.3 : undefined,
-            experimental_output: Output.object({
+            output: model.supportsObjectOutput ? Output.object({
                 schema: entitySchema
-            }),
+            }) : undefined,
             tools: {
-                web_search: openai.tools.webSearch({
+                web_search: openAIRouter.tools.webSearch({
                     searchContextSize: config.searchContextSize,
                     userLocation: config.userLocation
                 }),
@@ -84,7 +85,8 @@ export async function getResponseWithWebSearch(prompt: string, model: {name: str
 
         const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")
 
-        return {response: experimental_output.entity, sources: sourceUrls};
+        const response = model.supportsObjectOutput ? output.entity : text;
+        return {response: response, sources: sourceUrls};
     } catch (error) {
         // Throw error to be used later and stored
         console.log(error)

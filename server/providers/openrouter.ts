@@ -1,5 +1,5 @@
 import { SYSTEM_PROMPT } from "@/lib/system-prompt";
-import { google } from "@ai-sdk/google";
+import { createGoogleGenerativeAI, google } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateObject, generateText, NoObjectGeneratedError, Output, Tool } from "ai";
 import { z } from "zod";
@@ -9,6 +9,11 @@ const openRouter = createOpenRouter({
     apiKey: process.env.OPENROUTER_API_KEY as string,
 })
 
+const googleRouter = createGoogleGenerativeAI({
+    apiKey: process.env.GOOGLE_API_KEY as string,
+});
+
+
 const entitySchema = z.object({
     entity: z.string()
         .min(1, "Entity cannot be empty")
@@ -16,7 +21,7 @@ const entitySchema = z.object({
         .describe("The single entity name only, with no explanations or extra text")
 });
 
-export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, generationType: "object" | "text"}> {
+export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}): Promise<{response: string, generationType: "object" | "text"}> {
     try {
         const { object } = await generateObject({
             model: openRouter(model.name),
@@ -32,41 +37,45 @@ export async function getResponse(prompt: string, model: {name: string, temperat
         if (error instanceof NoObjectGeneratedError) {
             console.error(`⚠️ Object generation failed, trying text fallback:`, error);
 
-            const { text, experimental_output } = await generateText({
+            const { text, output } = await generateText({
                 model: openRouter(model.name),
                 system: SYSTEM_PROMPT,
                 prompt: prompt,
                 temperature: model.temperature ? 0.3 : undefined,
-                experimental_output: Output.object({
+                output: model.supportsObjectOutput ? Output.object({
                     schema: entitySchema
-                }),
+                }) : undefined,
             });
-            return {response: experimental_output.entity, generationType: "text"};
+
+            const response = model.supportsObjectOutput ? output.entity : text;
+            return {response: response, generationType: "text"};
         }
 
         throw error;
     }
 }
 
-export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null}, webSearchConfig?: AnthropicWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
+export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}, webSearchConfig?: AnthropicWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
     try {
-        const { experimental_output, sources } = await generateText({
+        const { output, sources, text } = await generateText({
             model: openRouter(model.name),
             system: SYSTEM_PROMPT,
             prompt: prompt,
             temperature: model.temperature ? 0.3 : undefined,
-            experimental_output: Output.object({
+            output: model.supportsObjectOutput ? Output.object({
                 schema: entitySchema
-            }),
+            }) : undefined,
             tools: {
-                google_search: google.tools.googleSearch({}) as unknown as Tool<never, never>,
+                google_search: googleRouter.tools.googleSearch({}) as unknown as Tool<never, never>,
               },
             toolChoice: { type: 'tool', toolName: 'google_search' },
         });
 
         const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")
 
-        return {response: experimental_output.entity, sources: sourceUrls};
+        const response = model.supportsObjectOutput ? output.entity : text;
+
+        return {response: output.entity, sources: sourceUrls};
     } catch (error) {
         // Throw error to be used later and stored
         console.log(error)

@@ -87,31 +87,31 @@ export async function POST(request: NextRequest) {
                 usedWebSearch = true;
                 switch (model.provider) {
                     case "openai": {
-                        const openAIResponse = await openAI.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const openAIResponse = await openAI.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = openAIResponse.response;
                         webSources = openAIResponse.sources;
                         break;
                     }
                     case "google": {
-                        const googleResponse = await google.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const googleResponse = await google.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = googleResponse.response;
                         webSources = googleResponse.sources;
                         break;
                     }
                     case "anthropic": {
-                        const anthropicResponse = await anthropic.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const anthropicResponse = await anthropic.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = anthropicResponse.response;
                         webSources = anthropicResponse.sources;
                         break;
                     }
                     case "xai": {
-                        const xAIResponse = await xai.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const xAIResponse = await xai.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = xAIResponse.response;
                         webSources = xAIResponse.sources;
                         break;
                     }
                     default: {
-                        const openrouterResponse = await openrouter.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const openrouterResponse = await openrouter.getResponseWithWebSearch(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = openrouterResponse.response;
                         webSources = openrouterResponse.sources;
                         break;
@@ -120,27 +120,27 @@ export async function POST(request: NextRequest) {
             } else {
                 switch (model.provider) {
                     case "openai": {
-                        const openAIResponse = await openAI.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const openAIResponse = await openAI.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = openAIResponse.response;
                         break;
                     }
                     case "google": {
-                        const googleResponse = await google.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const googleResponse = await google.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = googleResponse.response;
                         break;
                     }
                     case "anthropic": {
-                        const anthropicResponse = await anthropic.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const anthropicResponse = await anthropic.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = anthropicResponse.response;
                         break;
                     }
                     case "xai": {
-                        const xAIResponse = await xai.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const xAIResponse = await xai.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = xAIResponse.response;
                         break;
                     }
                     default: {
-                        const openrouterResponse = await openrouter.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature});
+                        const openrouterResponse = await openrouter.getResponse(promptRun.prompts.question, {name: model.name, temperature: model.temperature, supportsObjectOutput: model.supportsObjectOutput});
                         output = openrouterResponse.response;
                         break;
                     }

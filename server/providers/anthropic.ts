@@ -29,7 +29,7 @@ const anthropicWebSearchToolSchema = z.object({
 
 export type AnthropicWebSearchToolSchemaType = z.infer<typeof anthropicWebSearchToolSchema>;
 
-export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, generationType: "object" | "text"}> {
+export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}): Promise<{response: string, generationType: "object" | "text"}> {
     try {
         const { object } = await generateObject({
             model: anthropicRouter(model.name),
@@ -45,23 +45,25 @@ export async function getResponse(prompt: string, model: {name: string, temperat
         if (error instanceof NoObjectGeneratedError) {
             console.error(`⚠️ Object generation failed, trying text fallback:`, error);
 
-            const { text, experimental_output } = await generateText({
+            const { text, output } = await generateText({
                 model: anthropicRouter(model.name),
                 system: SYSTEM_PROMPT,
                 prompt: prompt,
                 temperature: model.temperature ? 0.3 : undefined,
-                experimental_output: Output.object({
+                output: model.supportsObjectOutput ? Output.object({
                     schema: entitySchema
-                }),
+                }) : undefined,
             });
-            return {response: experimental_output.entity, generationType: "text"};
+
+            const response = model.supportsObjectOutput ? output.entity : text;
+            return {response: response, generationType: "text"};
         }
 
         throw error;
     }
 }
 
-export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null}, webSearchConfig?: AnthropicWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
+export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}, webSearchConfig?: AnthropicWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
     try {
         const defualtConfig: AnthropicWebSearchToolSchemaType = {
             maxUses: 3,
@@ -69,14 +71,14 @@ export async function getResponseWithWebSearch(prompt: string, model: {name: str
 
         const config = webSearchConfig ? webSearchConfig : defualtConfig;
 
-        const { experimental_output, sources } = await generateText({
+        const { output, sources, text } = await generateText({
             model: anthropicRouter(model.name),
             system: SYSTEM_PROMPT,
             prompt: prompt,
             temperature: model.temperature ? 0.3 : undefined,
-            experimental_output: Output.object({
+            output: model.supportsObjectOutput ? Output.object({
                 schema: entitySchema
-            }),
+            }) : undefined,
             tools: {
                 web_search: anthropic.tools.webSearch_20250305(config)  as unknown as Tool<never, never>, // https://ai-sdk.dev/providers/ai-sdk-providers/anthropic#web-search-tool
               },
@@ -85,7 +87,8 @@ export async function getResponseWithWebSearch(prompt: string, model: {name: str
 
         const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")
 
-        return {response: experimental_output.entity, sources: sourceUrls};
+        const response = model.supportsObjectOutput ? output.entity : text;
+        return {response: response, sources: sourceUrls};
     } catch (error) {
         // Throw error to be used later and stored
         console.log(error)

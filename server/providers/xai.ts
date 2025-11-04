@@ -48,7 +48,7 @@ const xAIWebSearchToolSchema = z.object({
 
 type XAIWebSearchToolSchemaType = z.infer<typeof xAIWebSearchToolSchema>;
 
-export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null}): Promise<{response: string, generationType: "object" | "text"}> {
+export async function getResponse(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}): Promise<{response: string, generationType: "object" | "text"}> {
     try {
         const { object } = await generateObject({
             model: xAIRouter(model.name),
@@ -63,40 +63,41 @@ export async function getResponse(prompt: string, model: {name: string, temperat
     } catch (error) {
         if (error instanceof NoObjectGeneratedError) {
             console.error(`⚠️ Object generation failed, trying text fallback:`, error);
-            const { text, experimental_output } = await generateText({
+            const { text, output } = await generateText({
                 model: xAIRouter(model.name),
                 system: SYSTEM_PROMPT,
                 prompt: prompt,
                 temperature: model.temperature ? 0.3 : undefined,
-                experimental_output: Output.object({
+                output: model.supportsObjectOutput ? Output.object({
                     schema: entitySchema
-                }),
+                }) : undefined,
             });
             
-            return {response: experimental_output.entity, generationType: "text"};
+            const response = model.supportsObjectOutput ? output.entity : text;
+            return {response: response, generationType: "text"};
         }
 
         throw error;
     }
 }
 
-export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null}, webSearchConfig?: XAIWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
+export async function getResponseWithWebSearch(prompt: string, model: {name: string, temperature: boolean | null, supportsObjectOutput: boolean}, webSearchConfig?: XAIWebSearchToolSchemaType): Promise<{response: string, sources: string[]}> {
     try {
         const defualtConfig: XAIWebSearchToolSchemaType = {
-            mode: "off",
+            mode: "on",
             sources: [],
         }
 
         const config = webSearchConfig ? webSearchConfig : defualtConfig;
 
-        const { experimental_output, sources } = await generateText({
+            const { output, sources, text } = await generateText({
             model: xAIRouter(model.name),
             system: SYSTEM_PROMPT,
             prompt: prompt,
             temperature: model.temperature ? 0.3 : undefined,
-            experimental_output: Output.object({
+            output: model.supportsObjectOutput ? Output.object({
                 schema: entitySchema
-            }),
+            }) : undefined,
             providerOptions: {
                 xai: {
                     searchParameters: config,
@@ -106,7 +107,9 @@ export async function getResponseWithWebSearch(prompt: string, model: {name: str
 
         const sourceUrls = sources.map((source) => source.sourceType === "url" ? source.url : "")
 
-        return {response: experimental_output.entity, sources: sourceUrls};
+        const response = model.supportsObjectOutput ? output.entity : text;
+
+        return {response: response, sources: sourceUrls};
     } catch (error) {
         // Throw error to be used later and stored
         console.log(error)
