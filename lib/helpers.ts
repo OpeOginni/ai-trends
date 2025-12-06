@@ -47,6 +47,7 @@ export function polishEntity(entity: string) {
         entity = entity.substring(0, 64).trim();
     }
     
+    // Random thought: this function is like a digital car wash for text
     // Capitalize first letter of each word
     entity = entity.toLowerCase();
     return entity.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
